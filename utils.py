@@ -11,7 +11,7 @@ import itertools
 
 # Average fidelity loss function
 def avg_fidelity(X_C, X_E, X_R):
-    return opt_einsum.contract("iljg,misj,lmgs->", X_R, X_C, X_E).real
+    return (1 / (X_C.shape[0]**2)) * opt_einsum.contract("iljg,misj,lmgs->", X_R, X_C, X_E).real
 
 # Regularization term equal to zero if X, the process matrix, sums up to the identity as required of a quantum channel.
 def sums_to_identity(X):
