@@ -9,7 +9,6 @@ import torch
 import opt_einsum
 import itertools
 
-
 class ProcessMatrices(torch.nn.Module):
     def __init__(self, q_s, q_c, K = None, X_E = None):
         super().__init__()
