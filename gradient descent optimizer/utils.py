@@ -9,9 +9,18 @@ import torch
 import opt_einsum
 import itertools
 
-# Average fidelity loss function
-def avg_fidelity(X_C, X_E, X_R):
-    return (1 / (X_C.shape[0]**2)) * opt_einsum.contract("iljg,misj,lmgs->", X_R, X_C, X_E).real
+# Constructs X_E, the error process matrix, given a set of 2x2 Krauss operators describing a single-qubit error channel.
+def krauss_to_X_E(K, q_c):
+    E = torch.zeros(size=q_c*[len(K)] + 2*[2**q_c], dtype = torch.complex128, device = K[0].device)
+
+    for i in itertools.product(*[range(0,len(K)) for _ in range(0, q_c)]):
+        K_tot = K[i[0]]
+        for j in range(1, q_c):
+            K_tot = torch.kron(K_tot, K[i[j]])
+        E[i] = K_tot
+
+    X_E = opt_einsum.contract("".join([str(i) for i in range(q_c)]) + "lm," + "".join([str(i) for i in range(q_c)]) + "gs->lmgs", E, E.conj())
+    return X_E
 
 # Regularization term equal to zero if X, the process matrix, sums up to the identity as required of a quantum channel.
 def sums_to_identity(X):
@@ -36,7 +45,7 @@ def make_PSD(X):
     eig = torch.linalg.eig(X_flat)
     eigenvalues = eig.eigenvalues
     eigenvectors = eig.eigenvectors
-    eigenvalues = eigenvalues * (eigenvalues.real > 0)
+    eigenvalues = eigenvalues * (eigenvalues.real >= 0)
 
     X_PSD_flat = eig.eigenvectors @ torch.diag(eigenvalues) @ eig.eigenvectors.conj().T
     X_PSD = X_PSD_flat.unflatten(1,X.shape[0:2]).unflatten(0,X.shape[0:2])
@@ -45,11 +54,8 @@ def make_PSD(X):
 # Forces a process tensor to sum to the identity as required of a quantum channel
 def make_sum_to_identity(X):
     partial_diag = opt_einsum.contract("kikj->ij",X)
-    for i in range(X.shape[1]):
-        for j in range(X.shape[3]):
-            for k in range(X.shape[0]):
-                if i == j:
-                    X[k,i,k,i] /= partial_diag[i,i]
-                else:
-                    X[k,i,k,j] -= (partial_diag[i,j] / X.shape[0])
+    for k in range(X.shape[0]):
+        X[k, range(X.shape[1]), k, range(X.shape[1])] /= partial_diag[range(X.shape[1]), range(X.shape[1])]
+        X[k, range(X.shape[1]), k, range(X.shape[1])] += (partial_diag[range(X.shape[1]),range(X.shape[1])] / X.shape[0])
+        X[k, range(X.shape[1]), k, :] -= (partial_diag[range(X.shape[1]),:] / X.shape[0])
     return X
