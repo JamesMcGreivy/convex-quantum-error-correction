@@ -27,15 +27,15 @@ class ProcessMatrices(torch.nn.Module):
             self.X_E = X_E.to(device)
         self.X_E.requires_grad = False
         
-        self.V_C = torch.nn.Parameter(torch.normal(mean=0, std=1/(self.n_c**2 * self.n_s**2),size=(self.n_c,self.n_s,self.n_c,self.n_s),dtype=torch.complex128,device=device))
+        self.X_C = torch.nn.Parameter(torch.normal(mean=0, std=1/(self.n_c**2 * self.n_s**2),size=(self.n_c,self.n_s,self.n_c,self.n_s),dtype=torch.complex128,device=device))
         
-        self.V_R = torch.nn.Parameter(torch.normal(mean=0, std=1/(self.n_c**2 * self.n_s**2),size=(self.n_s,self.n_c,self.n_s,self.n_c),dtype=torch.complex128,device=device))
+        self.X_R = torch.nn.Parameter(torch.normal(mean=0, std=1/(self.n_c**2 * self.n_s**2),size=(self.n_s,self.n_c,self.n_s,self.n_c),dtype=torch.complex128,device=device))
 
     # Returns the process matrices for the coding, error, and recovery channel
     def forward(self):
-        X_C = self.V_C + self.V_C.conj().transpose(0,2).transpose(1,3)
+        X_C = self.X_C
         X_E = self.X_E
-        X_R = self.V_R + self.V_R.conj().transpose(0,2).transpose(1,3)
+        X_R = self.X_R
         return X_C, X_E, X_R 
 
     # Constructs X_E, the error process matrix, given a set of 2x2 Krauss operators describing a single-qubit error channel.
