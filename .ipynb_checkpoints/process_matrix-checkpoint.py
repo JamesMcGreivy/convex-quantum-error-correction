@@ -12,17 +12,17 @@ import itertools
 import utils
 
 # Constructs X_E, the error process matrix, given a set of 2x2 Krauss operators describing a single-qubit error channel.
-def krauss_to_X_E(K, q_c):
-    E = torch.zeros(size=q_c*[len(K)] + 2*[2**q_c], dtype = torch.complex128, device = K[0].device)
+def krauss_to_X_E(K, q):
+    E = torch.zeros(size=q*[len(K)] + 2*[2**q], dtype = torch.complex128, device = K[0].device)
 
-    for i in itertools.product(*[range(0,len(K)) for _ in range(0, q_c)]):
+    for i in itertools.product(*[range(0,len(K)) for _ in range(0, q)]):
         K_tot = K[i[0]]
-        for j in range(1, q_c):
+        for j in range(1, q):
             K_tot = torch.kron(K_tot, K[i[j]])
         E[i] = K_tot
 
-    X_E = opt_einsum.contract("".join([str(i) for i in range(q_c)]) + "lm," + "".join([str(i) for i in range(q_c)]) + "gs->lmgs", E, E.conj())
-    return X_E
+    X = opt_einsum.contract("".join([str(i) for i in range(q)]) + "lm," + "".join([str(i) for i in range(q)]) + "gs->lmgs", E, E.conj())
+    return X
 
 # Initializes an arbitrary process matrix according to the required constraints.
 def initialize_process_matrix(n_1, n_2, device = "cpu"):

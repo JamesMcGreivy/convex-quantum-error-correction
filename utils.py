@@ -2,12 +2,46 @@
 File: utils.py
 Author: James McGreivy
 Date: 04/29/2024
-Description: Some utility functions for the optimization.
+Description: Some general utility functions.
 """
 import numpy as np
 import torch
 import opt_einsum
 import itertools
+
+# ~~ general utility functions ~~ #
+
+def Dag(M):
+    return M.T.conj()
+
+def compute_fidelity(X_C, X_E, X_D):
+    return (1/X_C.shape[1]**2) * opt_einsum.contract("iljg,misj,lmgs->", X_D, X_C, X_E).real
+
+# ~~ utility functions for converting between krauss operators and process matrices ~~ #
+
+def X_to_krauss(X):
+    X_flat = X.flatten(start_dim = 0, end_dim=1).flatten(start_dim=1, end_dim=2)
+    V, S, _ = torch.svd(X_flat)
+    V = V.unflatten(dim=0, sizes=[X.shape[0], X.shape[1]])
+    
+    K = []
+    for r in range(V.shape[-1]):
+        K.append(np.sqrt(S[r]) * V[:,:,r])
+    return K
+
+def krauss_to_X(K, q_1, q_2):
+    n_1 = 2**q_1
+    n_2 = 2**q_2
+    return sum([opt_einsum.contract("il,jk->iljk", k, k.conj()) for k in K])
+
+def apply_krauss(rho, K):
+    return sum([k @ rho @ Dag(k) for k in K])
+
+def rank_X(X):
+    X_flat = X.flatten(start_dim=0,end_dim=1).flatten(start_dim=1,end_dim=2)
+    return torch.linalg.matrix_rank(X_flat, atol=1e-6)
+
+# ~~ utility functions for convex optimization over process matrices ~~ #
 
 # Regularization term equal to zero if X, the process matrix, sums up to the identity as required of a quantum channel.
 def sums_to_identity(X):
