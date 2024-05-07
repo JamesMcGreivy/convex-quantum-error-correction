@@ -7,16 +7,14 @@ constructing the process matrices.
 """
 import numpy as np
 import torch
-import opt_einsum
 import itertools
 import utils
 
 # Initializes an arbitrary process matrix according to the required constraints.
 def initialize_process_matrix(n_1, n_2, device = "cpu"):
-    X = torch.normal(mean=0, std=1/(n_1**2 * n_2**2), size=(n_2, n_1, n_2, n_1), dtype=torch.complex128, device=device)
-    X = utils.make_PSD(X)
-    X = utils.make_sum_to_identity(X)
-    return X
+    X = torch.rand(size=(n_2*n_1, n_2*n_1), dtype=torch.complex128)
+    X = X.conj().T @ X
+    return X.unflatten(1, (n_2, n_1)).unflatten(0, (n_2, n_1))
 
 class ProcessMatrix(torch.nn.Module):
     def __init__(self, q_1, q_2, device = "cpu"):
