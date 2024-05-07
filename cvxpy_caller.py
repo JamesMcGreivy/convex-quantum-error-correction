@@ -28,5 +28,5 @@ class CVXPY_Caller:
         self.prob.solve(warm_start=True, ignore_dpp = True)
 
         f_avg = float(self.prob.value)
-        X_new = torch.tensor(self.X_var.value, dtype=torch.complex128)
+        X_new = torch.tensor(self.X_var.value, dtype=torch.complex64, device=X.device)
         return X_new.unflatten(1, (X.shape[2], X.shape[3])).unflatten(0, (X.shape[0], X.shape[1])), f_avg

@@ -13,14 +13,14 @@ import process_matrix
 import utils
 from utils import Dag
 
-def convex_optimizer_qec(q_s, q_c, X_Es, X_C = None, X_D = None, device = "cpu"):
+def convex_optimizer_qec(q_s, q_c, X_Es, X_C=None, X_D=None, device="cpu"):
     n_s = 2**q_s
     n_c = 2**q_c
     
     if X_C is None:
-        X_C = process_matrix.initialize_process_matrix(n_s, n_c, device = device)
+        X_C = process_matrix.initialize_process_matrix(n_s, n_c, device=device)
     if X_D is None:
-        X_D = process_matrix.initialize_process_matrix(n_c, n_s, device = device)
+        X_D = process_matrix.initialize_process_matrix(n_c, n_s, device=device)
     optimizer_C = None
     optimizer_D = None
 
@@ -44,24 +44,24 @@ def convex_optimizer_qec(q_s, q_c, X_Es, X_C = None, X_D = None, device = "cpu")
 
     return {"X_C" : X_C, "X_D" : X_D}
 
-# Pauli Matrices
-I = torch.tensor([[1,0],[0,1]], dtype = torch.complex128)
-X = torch.tensor([[0,1],[1,0]], dtype = torch.complex128)
-Y = torch.tensor([[0,-1j],[1j,0]], dtype = torch.complex128)
-Z = torch.tensor([[1,0],[0,-1]], dtype = torch.complex128)
-
-# States
-Psi0 = torch.tensor([[1,0],], dtype = torch.complex128).T
-Psi1 = torch.tensor([[0,1],], dtype = torch.complex128).T
-
 def stabilizer_projector(stabilizers, result):
-    bigI = torch.eye(stabilizers[0].shape[0], dtype = torch.complex128)
-    projector = torch.eye(stabilizers[0].shape[0], dtype = torch.complex128)
+    bigI = torch.eye(stabilizers[0].shape[0], dtype=torch.complex64, device=stabilizers[0].device)
+    projector = torch.eye(stabilizers[0].shape[0], dtype=torch.complex64, device=stabilizers[0].device)
     for i, res in enumerate(result):
         projector = projector @ (bigI + (-1)**res * stabilizers[i])/2.0
     return projector
 
-def three_qubit_bitflip_qec():
+def three_qubit_bitflip_qec(device = "cpu"):
+    # Pauli Matrices
+    I = torch.tensor([[1,0],[0,1]], dtype=torch.complex64, device=device)
+    X = torch.tensor([[0,1],[1,0]], dtype=torch.complex64, device=device)
+    Y = torch.tensor([[0,-1j],[1j,0]], dtype=torch.complex64, device=device)
+    Z = torch.tensor([[1,0],[0,-1]], dtype=torch.complex64, device=device)
+
+    # States
+    Psi0 = torch.tensor([[1,0],], dtype=torch.complex64, device=device).T
+    Psi1 = torch.tensor([[0,1],], dtype=torch.complex64, device=device).T
+
     # ~~ Recovery krauss operators ~~
     U0 = torch.kron(I, torch.kron(I, I))
     P0 = torch.kron(Psi0@Dag(Psi0), torch.kron(Psi0@Dag(Psi0), Psi0@Dag(Psi0))) + torch.kron(Psi1@Dag(Psi1), torch.kron(Psi1@Dag(Psi1), Psi1@Dag(Psi1)))
@@ -97,7 +97,18 @@ def three_qubit_bitflip_qec():
     return {"C" : C, "R" : R, "D" : D, "X_C" : X_C, "X_R" : X_R, "X_D" : X_D}
 
 
-def five_qubit_qec():
+def five_qubit_qec(device="cpu"):
+
+    # Pauli Matrices
+    I = torch.tensor([[1,0],[0,1]], dtype=torch.complex64, device=device)
+    X = torch.tensor([[0,1],[1,0]], dtype=torch.complex64, device=device)
+    Y = torch.tensor([[0,-1j],[1j,0]], dtype=torch.complex64, device=device)
+    Z = torch.tensor([[1,0],[0,-1]], dtype=torch.complex64, device=device)
+
+    # States
+    Psi0 = torch.tensor([[1,0],], dtype=torch.complex64, device=device).T
+    Psi1 = torch.tensor([[0,1],], dtype=torch.complex64, device=device).T
+
     # ~~ Recovery krauss operators ~~
     stabilizers = [torch.kron(X, torch.kron(Z, torch.kron(Z, torch.kron(X, I)))),
                    torch.kron(I, torch.kron(X, torch.kron(Z, torch.kron(Z, X)))),
@@ -219,7 +230,13 @@ def five_qubit_qec():
     return {"C" : C, "R" : R, "D" : D, "X_C" : X_C, "X_R" : X_R, "X_D" : X_D}
 
 
-def nothing():
+def nothing(device="cpu"):
+
+    # Pauli Matrices
+    I = torch.tensor([[1,0],[0,1]], dtype=torch.complex64, device=device)
+    X = torch.tensor([[0,1],[1,0]], dtype=torch.complex64, device=device)
+    Y = torch.tensor([[0,-1j],[1j,0]], dtype=torch.complex64, device=device)
+    Z = torch.tensor([[1,0],[0,-1]], dtype=torch.complex64, device=device)
 
     C = [I]
     X_C = utils.krauss_to_X(C, 1, 1)
