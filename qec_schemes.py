@@ -13,10 +13,7 @@ import process_matrix
 import utils
 from utils import Dag
 
-def convex_optimizer_qec(q_s, q_c, X_Es, X_C=None, X_D=None, device="cpu"):
-    n_s = 2**q_s
-    n_c = 2**q_c
-    
+def convex_optimizer_qec(n_s, n_c, X_Es, X_C=None, X_D=None, train_X_C = True, train_X_D = True, norm_penalty = 0, device="cpu"):
     if X_C is None:
         X_C = process_matrix.initialize_process_matrix(n_s, n_c, device=device)
     if X_D is None:
@@ -24,25 +21,31 @@ def convex_optimizer_qec(q_s, q_c, X_Es, X_C=None, X_D=None, device="cpu"):
     optimizer_C = None
     optimizer_D = None
 
-    cutoff = 1e-10
+    cutoff = 1e-7
     delta = np.inf
     prev_f_avg = 0
     while (delta > cutoff):
-        W_Cs = [(1/n_s**2) * torch.einsum("iljg,lmgs->misj", X_D, X_E) for X_E in X_Es]
-        if optimizer_C is None:
-            optimizer_C = cvxpy_caller.CVXPY_Caller(X_C, W_Cs)
-        X_C, _ = optimizer_C(X_C, W_Cs)
+        if train_X_C:        
+            W_Cs = [(1/n_s**2) * torch.einsum("iljg,lmgs->misj", X_D, X_E) for X_E in X_Es]
+            if optimizer_C is None:
+                optimizer_C = cvxpy_caller.CVXPY_Caller(X_C, W_Cs, norm_penalty)
+            X_C, _ = optimizer_C(X_C, W_Cs)
 
-        W_Ds = [(1/n_s**2) * torch.einsum("misj,lmgs->iljg", X_C, X_E) for X_E in X_Es]
-        if optimizer_D is None:
-            optimizer_D = cvxpy_caller.CVXPY_Caller(X_D, W_Ds)
-        X_D, f_avg = optimizer_D(X_D, W_Ds)
+        if train_X_D:
+            W_Ds = [(1/n_s**2) * torch.einsum("misj,lmgs->iljg", X_C, X_E) for X_E in X_Es]
+            if optimizer_D is None:
+                optimizer_D = cvxpy_caller.CVXPY_Caller(X_D, W_Ds, norm_penalty)
+            X_D, _ = optimizer_D(X_D, W_Ds)
 
+        f_avg = np.mean([utils.compute_fidelity(X_C, X_E, X_D) for X_E in X_Es])
         print(f_avg)
         delta = (f_avg - prev_f_avg)
         prev_f_avg = f_avg
 
-    return {"X_C" : X_C, "X_D" : X_D}
+    C = utils.X_to_krauss(X_C)
+    D = utils.X_to_krauss(X_D)
+
+    return {"X_C" : X_C, "X_D" : X_D, "C" : C, "D" : D}
 
 def stabilizer_projector(stabilizers, result):
     bigI = torch.eye(stabilizers[0].shape[0], dtype=torch.complex64, device=stabilizers[0].device)
@@ -80,18 +83,66 @@ def three_qubit_bitflip_qec(device = "cpu"):
     R3 = U3 @ P3
 
     R = [R0, R1, R2, R3]
-    X_R = utils.krauss_to_X(R, 3, 3)
+    X_R = utils.krauss_to_X(R)
 
     # ~~ Encoding krauss operators ~~
     C0 = torch.kron(Psi0, torch.kron(Psi0, Psi0)) @ Dag(Psi0) + torch.kron(Psi1, torch.kron(Psi1, Psi1)) @ Dag(Psi1)
     C = [C0]
-    X_C = utils.krauss_to_X(C, 1, 3)
+    X_C = utils.krauss_to_X(C)
 
     D = []
     for c in range(len(C)):
         for r in range(len(R)):
             D.append(Dag(C[c]) @ R[r])
-    X_D = utils.krauss_to_X(D, 3, 1)
+    X_D = utils.krauss_to_X(D)
+    D = utils.X_to_krauss(X_D)
+
+    return {"C" : C, "R" : R, "D" : D, "X_C" : X_C, "X_R" : X_R, "X_D" : X_D}
+
+def three_qubit_phaseflip_qec(device = "cpu"):
+    # Pauli Matrices
+    I = torch.tensor([[1,0],[0,1]], dtype=torch.complex64, device=device)
+    X = torch.tensor([[0,1],[1,0]], dtype=torch.complex64, device=device)
+    Y = torch.tensor([[0,-1j],[1j,0]], dtype=torch.complex64, device=device)
+    Z = torch.tensor([[1,0],[0,-1]], dtype=torch.complex64, device=device)
+
+    # States
+    zero = torch.tensor([[1,0],], dtype = torch.complex64, device=device).T
+    one = torch.tensor([[0,1],], dtype = torch.complex64, device=device).T
+
+    Psi0 = 1/np.sqrt(2) * torch.tensor([[1,1],], dtype=torch.complex64, device=device).T
+    Psi1 = 1/np.sqrt(2) * torch.tensor([[1,-1],], dtype=torch.complex64, device=device).T
+
+    # ~~ Recovery krauss operators ~~
+    U0 = torch.kron(I, torch.kron(I, I))
+    P0 = torch.kron(Psi0@Dag(Psi0), torch.kron(Psi0@Dag(Psi0), Psi0@Dag(Psi0))) + torch.kron(Psi1@Dag(Psi1), torch.kron(Psi1@Dag(Psi1), Psi1@Dag(Psi1)))
+    R0 = U0 @ P0
+
+    U1 = torch.kron(Z, torch.kron(I, I))
+    P1 = torch.kron(Psi1@Dag(Psi1), torch.kron(Psi0@Dag(Psi0), Psi0@Dag(Psi0))) + torch.kron(Psi0@Dag(Psi0), torch.kron(Psi1@Dag(Psi1), Psi1@Dag(Psi1)))
+    R1 = U1 @ P1
+
+    U2 = torch.kron(I, torch.kron(Z, I))
+    P2 = torch.kron(Psi0@Dag(Psi0), torch.kron(Psi1@Dag(Psi1), Psi0@Dag(Psi0))) + torch.kron(Psi1@Dag(Psi1), torch.kron(Psi0@Dag(Psi0), Psi1@Dag(Psi1)))
+    R2 = U2 @ P2
+
+    U3 = torch.kron(I, torch.kron(I, Z))
+    P3 = torch.kron(Psi0@Dag(Psi0), torch.kron(Psi0@Dag(Psi0), Psi1@Dag(Psi1))) + torch.kron(Psi1@Dag(Psi1), torch.kron(Psi1@Dag(Psi1), Psi0@Dag(Psi0)))
+    R3 = U3 @ P3
+
+    R = [R0, R1, R2, R3]
+    X_R = utils.krauss_to_X(R)
+
+    # ~~ Encoding krauss operators ~~
+    C0 = torch.kron(Psi0, torch.kron(Psi0, Psi0)) @ Dag(zero) + torch.kron(Psi1, torch.kron(Psi1, Psi1)) @ Dag(one)
+    C = [C0]
+    X_C = utils.krauss_to_X(C)
+
+    D = []
+    for c in range(len(C)):
+        for r in range(len(R)):
+            D.append(Dag(C[c]) @ R[r])
+    X_D = utils.krauss_to_X(D)
     D = utils.X_to_krauss(X_D)
 
     return {"C" : C, "R" : R, "D" : D, "X_C" : X_C, "X_R" : X_R, "X_D" : X_D}
@@ -180,7 +231,7 @@ def five_qubit_qec(device="cpu"):
     R15 = U15 @ P15
 
     R = [R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15]
-    X_R = utils.krauss_to_X(R, 5, 5)
+    X_R = utils.krauss_to_X(R)
 
     # ~~ Encoding krauss operators ~~
     Logical0 = 1/4 * (torch.kron(Psi0, torch.kron(Psi0, torch.kron(Psi0, torch.kron(Psi0, Psi0)))) +
@@ -218,17 +269,16 @@ def five_qubit_qec(device="cpu"):
         torch.kron(Psi1, torch.kron(Psi1, torch.kron(Psi0, torch.kron(Psi1, Psi0)))))
             
     C = [Logical0 @ Dag(Psi0) + Logical1 @ Dag(Psi1)]
-    X_C = utils.krauss_to_X(C, 1, 3)
+    X_C = utils.krauss_to_X(C)
 
     D = []
     for c in range(len(C)):
         for r in range(len(R)):
             D.append(Dag(C[c]) @ R[r])
-    X_D = utils.krauss_to_X(D, 3, 1)
+    X_D = utils.krauss_to_X(D)
     D = utils.X_to_krauss(X_D)
 
     return {"C" : C, "R" : R, "D" : D, "X_C" : X_C, "X_R" : X_R, "X_D" : X_D}
-
 
 def nothing(device="cpu"):
 
@@ -239,9 +289,9 @@ def nothing(device="cpu"):
     Z = torch.tensor([[1,0],[0,-1]], dtype=torch.complex64, device=device)
 
     C = [I]
-    X_C = utils.krauss_to_X(C, 1, 1)
+    X_C = utils.krauss_to_X(C)
 
     D = [I]
-    X_D = utils.krauss_to_X(D, 1, 1)
+    X_D = utils.krauss_to_X(D)
 
-    return {"X_C" : X_C, "X_D": X_D}
+    return {"X_C" : X_C, "X_D": X_D, "C" : C, "D" : D}

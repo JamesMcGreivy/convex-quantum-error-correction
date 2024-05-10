@@ -11,20 +11,22 @@ import utils
 
 class CVXPY_Caller:
 
-    def __init__(self, X, Ws):
+    def __init__(self, X, Ws, norm_penalty = 0):
         self.X_var = cp.Variable((X.shape[0]*X.shape[1], X.shape[2]*X.shape[3]), PSD=True)
-        self.constraints = [self.X_var >> 0, cp.partial_trace(self.X_var, dims=(X.shape[0], X.shape[1]), axis=0) == cp.Constant(np.identity(X.shape[1]).astype(np.complex64))]
-        self.Ws_param = [cp.Parameter((W.shape[0]*W.shape[1], W.shape[2]*W.shape[3]), PSD=True) for W in Ws]
+        self.constraints = [cp.partial_trace(self.X_var, dims=(X.shape[0], X.shape[1]), axis=0) == cp.Constant(np.identity(X.shape[1]).astype(np.complex128))]
+        self.Ws_param = [cp.Parameter((W.shape[0]*W.shape[1], W.shape[2]*W.shape[3]), complex=True) for W in Ws]
 
         problem = 0
         for i, W_param in enumerate(self.Ws_param):
             problem += cp.real(cp.sum(cp.multiply(self.X_var, self.Ws_param[i])))
+        if norm_penalty > 1e-12:
+            problem -= norm_penalty * cp.norm(self.X_var, 1)
         self.prob = cp.Problem(cp.Maximize(problem / (i + 1)), self.constraints)
 
     def __call__(self, X, Ws):
         for i, W_param in enumerate(self.Ws_param):
             W = Ws[i].flatten(start_dim=0, end_dim=1).flatten(start_dim=1, end_dim=2).cpu().numpy()
-            W_param.value = W_param.project(W)
+            W_param.value = W
         self.prob.solve(warm_start=True, ignore_dpp = True)
 
         f_avg = float(self.prob.value)
